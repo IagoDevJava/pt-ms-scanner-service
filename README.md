@@ -1,9 +1,8 @@
-# 📷 Scanner Service - Микросервис распознавания продуктов
+# 📷 Scanner Service - Микросервис-оркестратор сканирования продуктов
 
 [![Java Version](https://img.shields.io/badge/Java-21-blue.svg)](https://openjdk.org/projects/jdk/21/)
-[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2.4-brightgreen.svg)](https://spring.io/projects/spring-boot)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.0.6-brightgreen.svg)](https://spring.io/projects/spring-boot)
 [![RabbitMQ](https://img.shields.io/badge/RabbitMQ-3.12-orange.svg)](https://www.rabbitmq.com/)
-[![TensorFlow Lite](https://img.shields.io/badge/TensorFlow%20Lite-2.15-ff6f00.svg)](https://www.tensorflow.org/lite)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 ## 📋 Оглавление
@@ -22,38 +21,41 @@
 
 ## 🎯 Обзор
 
-**Scanner Service** - высокопроизводительный микросервис для интеллектуального распознавания продуктов питания с использованием компьютерного зрения и машинного обучения. Сервис поддерживает 3 метода распознавания и может обрабатывать до 1000 запросов в секунду.
+**Scanner Service** — лёгкий микросервис-оркестратор, который предоставляет REST API для идентификации продуктов по штрих-коду или фотографии.  
+Он не выполняет распознавание самостоятельно, а координирует взаимодействие между клиентами, базой продуктов и специализированным сервисом комплексного сканирования (`ms-complex-scan`) через RabbitMQ.
 
 ### Ключевые особенности:
-- 🚀 **Виртуальные потоки Java 21** для максимальной производительности
-- 🔄 **Асинхронная обработка** через RabbitMQ
-- 🧠 **ML классификация** продуктов (TensorFlow Lite)
-- 📸 **OCR распознавание** текста на упаковках
+- ⚡ **Быстрый поиск по штрих-коду** с двухуровневым кэшированием (in-memory Caffeine + внешний сервис-библиотека)
+- 🔄 **Асинхронное сканирование изображений** — запросы передаются в очередь и обрабатываются независимым worker-сервисом
+- ✅ **Отслеживание статуса задач** — клиент может запросить прогресс и получить результат, когда он будет готов
+- 💬 **Уведомления о завершении** — результаты сканирования доставляются клиентам через выделенную очередь RabbitMQ
 - 📊 **Production-ready метрики** (Prometheus + Grafana)
-- 🛡️ **Отказоустойчивость** (Retry, DLQ, Circuit Breaker)
+- 🛡️ **Отказоустойчивость** — повторные попытки на уровне брокера, Dead Letter Queue для проблемных сообщений
 
 ## 🏗 Архитектура
 
 ```mermaid
-graph TB
-    Client[Мобильное приложение] --> API[API Gateway]
-    API --> |Синхронно| Sync[Sync Scan]
-    API --> |Асинхронно| Queue[RabbitMQ]
+graph LR
+    Client[Клиент (ms-storage-service)] -->|REST: /scan/barcode| Scanner[ms-scanner-service]
+    Client -->|REST: /scan/complex| Scanner
+    Client -->|REST: /scan/status/{id}| Scanner
     
-    Queue --> |scan.requests| Consumer[RabbitMQ Consumer]
-    Consumer --> Orchestrator[Scan Orchestrator]
+    Scanner -->|Feign| Library[ms-food-library]
+    Scanner -->|Кэш Caffeine| Cache[(In-Memory Cache)]
     
-    Orchestrator --> Barcode[Barcode Scanner<br/>ZXing]
-    Orchestrator --> OCR[OCR Scanner<br/>Tesseract]
-    Orchestrator --> ML[ML Classifier<br/>TensorFlow]
+    Scanner -->|Публикация запроса| Exchange[scan.exchange]
+    Exchange -->|routing: scan.request| QueueReq[scan.requests.queue]
+    QueueReq --> ComplexScan[ms-complex-scan]
     
-    Barcode --> Library[Library Service]
-    OCR --> Library
-    ML --> Library
+    ComplexScan -->|routing: scan.result| Exchange
+    Exchange -->|routing: scan.result| QueueRes[scan.results.queue]
+    QueueRes --> Scanner
     
-    Orchestrator --> |Результат| Queue
-    Queue --> |scan.results| Storage[Storage Service]
+    Scanner -->|routing: scan.notification| Exchange
+    Exchange -->|routing: scan.notification| QueueNotif[scan.notifications.queue]
+    QueueNotif --> Client
     
-    style Client fill:#e1f5fe
-    style Queue fill:#fff3e0
-    style ML fill:#f3e5f5
+    style Client fill:#e8f5e9
+    style Scanner fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style ComplexScan fill:#f3e5f5
+    style Library fill:#fff9c4

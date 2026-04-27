@@ -1,0 +1,150 @@
+# ===================================================================
+# MS-SCANNER-SERVICE - Production Configuration
+# ===================================================================
+
+spring:
+  application:
+    name: ms-scanner-service
+
+  # ========== RabbitMQ Configuration ==========
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    virtual-host: ${RABBITMQ_VHOST:/}
+    connection-timeout: 5000
+    requested-heartbeat: 60
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+      retry:
+        enabled: true
+        initial-interval: 1000ms
+        max-attempts: 3
+        max-interval: 10000ms
+        multiplier: 2.0
+
+  # ========== Jackson Configuration ==========
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+      write-durations-as-timestamps: true
+    deserialization:
+      fail-on-unknown-properties: false
+    default-property-inclusion: non_null
+    time-zone: UTC
+    date-format: com.fasterxml.jackson.databind.util.ISO8601DateFormat
+
+# ========== Server Configuration ==========
+server:
+  port: ${SERVER_PORT:8083}
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/html,text/xml,text/plain
+    min-response-size: 2048
+  tomcat:
+    threads:
+      max: 200
+      min-spare: 10
+    connection-timeout: 20000
+    max-connections: 10000
+    accept-count: 100
+  error:
+    include-message: always
+    include-binding-errors: always
+    include-stacktrace: never
+    include-exception: false
+  shutdown: graceful
+
+# ========== Library Service Client ==========
+library:
+  service:
+    url: ${LIBRARY_SERVICE_URL:http://localhost:8081}
+    connect-timeout-ms: ${LIBRARY_CONNECT_TIMEOUT:5000}
+    read-timeout-ms: ${LIBRARY_READ_TIMEOUT:10000}
+    write-timeout-ms: ${LIBRARY_WRITE_TIMEOUT:5000}
+    max-in-memory-size: ${LIBRARY_MAX_MEMORY_SIZE:2097152}
+    ssl:
+      enabled: ${LIBRARY_SSL_ENABLED:false}
+      trust-store-path: ${LIBRARY_TRUST_STORE_PATH:}
+      trust-store-password: ${LIBRARY_TRUST_STORE_PASSWORD:}
+    retry:
+      max-attempts: ${LIBRARY_RETRY_ATTEMPTS:3}
+      initial-delay-ms: ${LIBRARY_RETRY_DELAY:500}
+      max-delay-ms: ${LIBRARY_RETRY_MAX_DELAY:5000}
+      multiplier: ${LIBRARY_RETRY_MULTIPLIER:2.0}
+  processing:
+    timeout-seconds: ${SCAN_PROCESSING_TIMEOUT:30}
+    queue-capacity: ${SCAN_QUEUE_CAPACITY:1000}
+
+# ========== Logging Configuration ==========
+logging:
+  level:
+    root: ${LOG_LEVEL_ROOT:INFO}
+    com.egorov.ms_scanner_service: ${LOG_LEVEL_APP:INFO}
+    com.egorov.ms_scanner_service.service: ${LOG_LEVEL_SERVICE:INFO}
+    org.springframework.amqp: ${LOG_LEVEL_RABBIT:INFO}
+  pattern:
+    console: "%d{ISO8601} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{ISO8601} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: ${LOG_FILE:logs/ms-scanner-service.log}
+    max-size: ${LOG_MAX_SIZE:100MB}
+    max-history: ${LOG_MAX_HISTORY:30}
+    total-size-cap: ${LOG_TOTAL_SIZE:10GB}
+
+# ========== Management (Actuator) ==========
+management:
+  endpoints:
+    web:
+      exposure:
+        include: ${ACTUATOR_ENDPOINTS:health,info,metrics,prometheus}
+        exclude: ${ACTUATOR_EXCLUDE:}
+      base-path: ${ACTUATOR_BASE_PATH:/actuator}
+  endpoint:
+    health:
+      show-details: always
+      show-components: always
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,libraryService,rabbitmq
+        liveness:
+          include: livenessState,diskSpace
+    metrics:
+      enabled: true
+    prometheus:
+      enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+        step: ${PROMETHEUS_STEP:60s}
+    tags:
+      application: ${spring.application.name}
+      environment: ${ENVIRONMENT:prod}
+      version: ${APP_VERSION:1.0.0}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+        scan.processing.time: true
+
+# ========== Info Configuration ==========
+info:
+  app:
+    name: ${spring.application.name}
+    version: ${APP_VERSION:1.0.0}
+    description: "Microservice for product recognition (barcode, OCR, ML)"
+
+
+# ========== Micrometer Observation ==========
+micrometer:
+  tracing:
+    enabled: true
+    propagation:
+      type: W3C
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:0.1}
