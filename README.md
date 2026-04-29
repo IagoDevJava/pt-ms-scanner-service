@@ -121,8 +121,28 @@ git clone https://github.com/your-org/ms-scanner-service.git
 cd ms-scanner-service
 ```
 
-# Запустить всё одной командой
-make run
+### Запустить всё одной командой
+```make run```
+
+Откроется:
+- Приложение: http://localhost:8083
+- RabbitMQ Management: http://localhost:15672 (guest/guest)
+- Health check: http://localhost:8083/actuator/health
+
+### Быстрый старт (без Make)
+
+#### Запустить RabbitMQ
+```docker-compose up -d rabbitmq```
+
+#### Подождать готовности RabbitMQ (опционально)
+```docker inspect -f "{{.State.Health.Status}}" scanner-rabbitmq```
+
+#### Запустить приложение
+```mvn spring-boot:run -Dspring-boot.run.profiles=dev```
+
+### Ручной запуск (если RabbitMQ уже где-то запущен)
+С указанием хоста RabbitMQ
+```RABBITMQ_HOST=my-rabbitmq-host mvn spring-boot:run -Dspring-boot.run.profiles=dev```
 
 ## 📚 API Документация
 
