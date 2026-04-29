@@ -1,11 +1,12 @@
 package com.egorov.ms_scanner_service.service;
 
-import com.egorov.ms_scanner_service.consumer.ScanResultConsumer;
+import com.egorov.ms_scanner_service.exception.FoodLibraryException;
+import com.egorov.ms_scanner_service.exception.QueuePublishException;
 import com.egorov.ms_scanner_service.feign.wrapper.FoodLibraryClientWrapper;
 import com.egorov.ms_scanner_service.model.BarcodeScanRequest;
 import com.egorov.ms_scanner_service.model.BarcodeScanResponse;
 import com.egorov.ms_scanner_service.model.ProductInfo;
-import com.egorov.ms_scanner_service.model.ScanRequest;
+import com.egorov.ms_scanner_service.model.ComplexScanRequest;
 import com.egorov.ms_scanner_service.model.ScanResult;
 import com.egorov.ms_scanner_service.producer.ScanRequestProducer;
 import java.util.Optional;
@@ -14,13 +15,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-/**
- * Сервис-оркестратор сканирования продуктов.
- *
- * <p>Реализует {@link ScanService}. Выполняет поиск по штрих-коду через кэш и
- * библиотеку продуктов, а также запускает асинхронное распознавание по изображению через очередь
- * RabbitMQ.
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -30,57 +24,62 @@ public class ScanServiceImpl implements ScanService {
   private final FoodLibraryClientWrapper foodLibraryClient;
   private final ScanRequestProducer requestProducer;
 
-  /**
-   * Поиск продукта по штрих-коду.
-   *
-   * <p>Порядок проверки:
-   * <ol>
-   *   <li>Локальный кэш ({@link CacheService#findByBarcode})</li>
-   *   <li>Внешний сервис библиотеки продуктов через Feign</li>
-   * </ol>
-   *
-   * @return {@link BarcodeScanResponse} с флагом {@code found} и продуктом, либо инструкцией для
-   * цией для ручного ввода/фотографирования
-   */
   @Override
   public BarcodeScanResponse scanBarcode(BarcodeScanRequest request) {
     long startTime = System.currentTimeMillis();
 
     log.info("Barcode scan: userId={}, barcode={}", request.userId(), request.barcode());
 
-    Optional<ProductInfo> cachedProduct = cacheService.findByBarcode(request.barcode());
-
-    if (cachedProduct.isPresent()) {
-      long duration = System.currentTimeMillis() - startTime;
-      log.info("Barcode scan CACHE HIT: {} ms", duration);
-
-      return BarcodeScanResponse.found(
-          cachedProduct.get(),
-          "Продукт найден в кеше",
-          request.barcode(),
-          duration
-      );
+    // 1. Проверяем кэш
+    try {
+      Optional<ProductInfo> cachedProduct = cacheService.findByBarcode(request.barcode());
+      if (cachedProduct.isPresent()) {
+        long duration = System.currentTimeMillis() - startTime;
+        log.info("Barcode scan CACHE HIT: {} ms", duration);
+        return BarcodeScanResponse.found(
+            cachedProduct.get(),
+            "Продукт найден в кеше",
+            request.barcode(),
+            duration
+        );
+      }
+    } catch (Exception e) {
+      log.warn("Cache lookup failed for barcode {}: {}",
+          request.barcode(), e.getMessage());
     }
 
-    Optional<ProductInfo> product = foodLibraryClient.findByBarcode(request.barcode());
+    // 2. Ищем в библиотеке продуктов
+    try {
+      Optional<ProductInfo> product = foodLibraryClient.findByBarcode(request.barcode());
+      if (product.isPresent()) {
+        try {
+          cacheService.put(request.barcode(), product.get());
+        } catch (Exception e) {
+          log.warn("Failed connect to food library client for barcode {}: {}",
+              request.barcode(), e.getMessage());
+        }
 
-    if (product.isPresent()) {
-      cacheService.put(request.barcode(), product.get());
-
+        long duration = System.currentTimeMillis() - startTime;
+        log.info("Barcode scan LIBRARY HIT: {} ms", duration);
+        return BarcodeScanResponse.found(
+            product.get(),
+            "Продукт найден в базе",
+            request.barcode(),
+            duration
+        );
+      }
+    } catch (FoodLibraryException e) {
       long duration = System.currentTimeMillis() - startTime;
-      log.info("Barcode scan LIBRARY HIT: {} ms", duration);
-
-      return BarcodeScanResponse.found(
-          product.get(),
-          "Продукт найден в базе",
-          request.barcode(),
-          duration
-      );
+      log.error("Barcode scan FAILED (FoodLibraryException): barcode={}, {} ms, error: {}",
+          request.barcode(), duration, e.getMessage(), e);
+    } catch (Exception e) {
+      long duration = System.currentTimeMillis() - startTime;
+      log.error("Barcode scan FAILED (Unexpected): barcode={}, {} ms, error: {}",
+          request.barcode(), duration, e.getMessage(), e);
     }
 
     long duration = System.currentTimeMillis() - startTime;
     log.info("Barcode scan NOT FOUND: {} ms", duration);
-
     return BarcodeScanResponse.notFound(
         request.barcode(),
         "Продукт не найден. Сфотографируйте упаковку или добавьте вручную.",
@@ -88,47 +87,75 @@ public class ScanServiceImpl implements ScanService {
     );
   }
 
-  /**
-   * Запускает асинхронное сканирование изображения.
-   *
-   * <p>Отправляет запрос в очередь RabbitMQ и сохраняет начальный статус
-   * {@code PENDING} в кэше результатов.
-   *
-   * @return {@link ScanResult} с уникальным {@code taskId} для отслеживания
-   */
   @Override
-  public ScanResult complexScan(ScanRequest request) {
+  public ScanResult complexScan(ComplexScanRequest request) {
     log.info("Complex scan request: userId={}, taskId={}",
         request.userId(), request.taskId());
 
-    requestProducer.sendRequest(request);
+    try {
+      requestProducer.sendRequest(request);
 
-    ScanResult pendingResult = ScanResult.pending(request.taskId(), request.userId());
-    cacheService.putScanResult(request.taskId(), pendingResult);
+      ScanResult pendingResult = ScanResult.pending(request.taskId(), request.userId());
+      cacheService.putScanResult(request.taskId(), pendingResult);
 
-    return pendingResult;
-  }
+      return pendingResult;
+    } catch (QueuePublishException e) {
+      log.error("Failed to publish scan request to queue: taskId={}, error={}",
+          e.getTaskId(), e.getMessage(), e);
 
-  /**
-   * Обновляет результат сканирования в кэше.
-   *
-   * <p>Вызывается из {@link ScanResultConsumer} при получении ответа от
-   * {@code ms-complex-scan}. При успешном завершении также обновляет кэш продуктов.
-   */
-  public void updateResult(ScanResult result) {
-    if (result != null && result.taskId() != null) {
-      log.info("Updating scan result: taskId={}, status={}", result.taskId(), result.status());
-      cacheService.putScanResult(result.taskId(), result);
+      return ScanResult.failed(
+          e.getTaskId(),
+          request.userId(),
+          "Сервис сканирования временно недоступен. Попробуйте позже.",
+          0L
+      );
+    } catch (Exception e) {
+      log.error("Unexpected exception during complex scan: taskId={}, error={}",
+          request.taskId(), e.getMessage(), e);
+
+      return ScanResult.failed(
+          request.taskId(),
+          request.userId(),
+          "Непредвиденная ошибка сканирования. Попробуйте позже.",
+          0L
+      );
     }
   }
 
-  /**
-   * Возвращает статус асинхронной задачи по её идентификатору.
-   *
-   * @param taskId идентификатор задачи из {@link #complexScan(ScanRequest)}
-   * @return текущий {@link ScanResult} или {@code null}, если задача не найдена
-   */
+  public void updateResult(ScanResult result) {
+    if (result == null) {
+      log.warn("Attempt to update null scan result");
+      return;
+    }
+    if (result.taskId() == null) {
+      log.warn("Attempt to update scan result with null taskId: status={}",
+          result.status());
+      return;
+    }
+
+    log.info("Updating scan result: taskId={}, status={}",
+        result.taskId(), result.status());
+
+    try {
+      cacheService.putScanResult(result.taskId(), result);
+    } catch (RuntimeException e) {
+      log.error("Failed to update scan result in cache: taskId={}, error={}",
+          result.taskId(), e.getMessage(), e);
+    }
+  }
+
   public ScanResult getTaskStatus(UUID taskId) {
-    return cacheService.getTaskStatus(taskId);
+    if (taskId == null) {
+      log.warn("Attempt to get task status with null taskId");
+      return null;
+    }
+
+    try {
+      return cacheService.getTaskStatus(taskId);
+    } catch (RuntimeException e) {
+      log.error("Failed to get task status from cache: taskId={}, error={}",
+          taskId, e.getMessage(), e);
+      return null;
+    }
   }
 }

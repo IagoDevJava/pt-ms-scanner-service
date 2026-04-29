@@ -26,6 +26,18 @@ spring:
         max-interval: 10000ms
         multiplier: 2.0
 
+  # ========== Feign Client Configuration ==========
+  cloud:
+    openfeign:
+      client:
+        config:
+          ms-food-library:
+            connect-timeout: 5000
+            read-timeout: 10000
+      httpclient:
+        hc5:
+          enabled: true
+
   # ========== Jackson Configuration ==========
   jackson:
     serialization:
@@ -57,27 +69,6 @@ server:
     include-stacktrace: never
     include-exception: false
   shutdown: graceful
-
-# ========== Library Service Client ==========
-library:
-  service:
-    url: ${LIBRARY_SERVICE_URL:http://localhost:8081}
-    connect-timeout-ms: ${LIBRARY_CONNECT_TIMEOUT:5000}
-    read-timeout-ms: ${LIBRARY_READ_TIMEOUT:10000}
-    write-timeout-ms: ${LIBRARY_WRITE_TIMEOUT:5000}
-    max-in-memory-size: ${LIBRARY_MAX_MEMORY_SIZE:2097152}
-    ssl:
-      enabled: ${LIBRARY_SSL_ENABLED:false}
-      trust-store-path: ${LIBRARY_TRUST_STORE_PATH:}
-      trust-store-password: ${LIBRARY_TRUST_STORE_PASSWORD:}
-    retry:
-      max-attempts: ${LIBRARY_RETRY_ATTEMPTS:3}
-      initial-delay-ms: ${LIBRARY_RETRY_DELAY:500}
-      max-delay-ms: ${LIBRARY_RETRY_MAX_DELAY:5000}
-      multiplier: ${LIBRARY_RETRY_MULTIPLIER:2.0}
-  processing:
-    timeout-seconds: ${SCAN_PROCESSING_TIMEOUT:30}
-    queue-capacity: ${SCAN_QUEUE_CAPACITY:1000}
 
 # ========== Logging Configuration ==========
 logging:
@@ -111,7 +102,7 @@ management:
         enabled: true
       group:
         readiness:
-          include: readinessState,libraryService,rabbitmq
+          include: readinessState,rabbitmq
         liveness:
           include: livenessState,diskSpace
     metrics:
@@ -130,7 +121,6 @@ management:
     distribution:
       percentiles-histogram:
         http.server.requests: true
-        scan.processing.time: true
 
 # ========== Info Configuration ==========
 info:
@@ -139,12 +129,18 @@ info:
     version: ${APP_VERSION:1.0.0}
     description: "Microservice for product recognition (barcode, OCR, ML)"
 
-
-# ========== Micrometer Observation ==========
-micrometer:
-  tracing:
-    enabled: true
-    propagation:
-      type: W3C
-    sampling:
-      probability: ${TRACING_SAMPLING_PROBABILITY:0.1}
+# ========== Fallback for feign client ==========
+resilience4j:
+  circuitbreaker:
+    instances:
+      foodLibrary:
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+  timelimiter:
+    instances:
+      foodLibrary:
+        timeout-duration: 2s

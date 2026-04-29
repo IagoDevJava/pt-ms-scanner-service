@@ -5,7 +5,7 @@ import jakarta.validation.constraints.NotNull;
 import java.time.ZonedDateTime;
 import java.util.UUID;
 
-public record ScanRequest(
+public record ComplexScanRequest(
     @NotNull UUID taskId,
     @NotNull Long userId,
     @NotNull String imageBase64,
@@ -14,7 +14,7 @@ public record ScanRequest(
     ZonedDateTime timestamp
 ) {
 
-  public ScanRequest {
+  public ComplexScanRequest {
     if (taskId == null) {
       taskId = UUID.randomUUID();
     }

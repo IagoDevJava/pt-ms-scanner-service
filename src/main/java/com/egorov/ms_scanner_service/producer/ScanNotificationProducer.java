@@ -51,12 +51,10 @@ public class ScanNotificationProducer {
           RabbitMQConfig.SCAN_NOTIFICATION_RK,
           event,
           message -> {
-            // Устанавливаем приоритет для важных уведомлений
             message.getMessageProperties().setPriority(
                 event.status() == com.egorov.ms_scanner_service.model.ScanStatus.COMPLETED ? 5 : 3
             );
-            // Добавляем expiration для устаревших уведомлений
-            message.getMessageProperties().setExpiration("60000"); // 1 минута
+            message.getMessageProperties().setExpiration("60000");
             return message;
           }
       );
@@ -65,8 +63,6 @@ public class ScanNotificationProducer {
     } catch (Exception e) {
       log.error("Failed to send scan notification: taskId={}, error={}",
           event.taskId(), e.getMessage(), e);
-      // Не пробрасываем исключение, чтобы не блокировать обработку результата
-      // В production здесь можно добавить fallback логику
     }
   }
 }

@@ -48,26 +48,23 @@ public class CacheService {
         .expireAfterWrite(Duration.ofHours(barcodeTtlHours))
         .maximumSize(barcodeMaxSize)
         .recordStats()
-        .removalListener((key, value, cause) -> {
-          log.debug("Barcode cache entry removed - barcode: {}, cause: {}", key, cause);
-        })
+        .removalListener(
+            (key, value, cause) -> log.debug("Barcode cache entry removed - barcode: {}, cause: {}",
+                key, cause))
         .build();
 
     this.scanResultCache = Caffeine.newBuilder()
         .expireAfterWrite(Duration.ofMinutes(scanResultTtlMinutes))
         .maximumSize(scanResultMaxSize)
         .recordStats()
-        .removalListener((key, value, cause) -> {
-          log.debug("Scan result cache entry removed - taskId: {}, cause: {}", key, cause);
-        })
+        .removalListener((key, value, cause) -> log.debug(
+            "Scan result cache entry removed - taskId: {}, cause: {}", key, cause))
         .build();
 
     log.info(
         "CacheService initialized - barcodeCache maxSize: {}, ttl: {} hours, scanResultCache maxSize: {}, ttl: {} minutes",
         barcodeMaxSize, barcodeTtlHours, scanResultMaxSize, scanResultTtlMinutes);
   }
-
-  // ==================== Barcode Cache ====================
 
   /**
    * Поиск продукта по штрих-коду в кеше
@@ -97,23 +94,6 @@ public class CacheService {
     log.debug("Barcode cached: {} -> {}", barcode, product.name());
   }
 
-  // ==================== Scan Result Cache ====================
-
-  /**
-   * Получение результата сканирования по taskId
-   */
-  public Optional<ScanResult> findByTaskId(UUID taskId) {
-    ScanResult result = scanResultCache.getIfPresent(taskId);
-
-    if (result != null) {
-      log.debug("Scan result cache HIT: {}", taskId);
-      return Optional.of(result);
-    }
-
-    log.debug("Scan result cache MISS: {}", taskId);
-    return Optional.empty();
-  }
-
   /**
    * Сохранение результата сканирования в кеш
    */
@@ -137,60 +117,5 @@ public class CacheService {
    */
   public ScanResult getTaskStatus(UUID taskId) {
     return scanResultCache.getIfPresent(taskId);
-  }
-
-  /**
-   * Проверка существования задачи в кэше
-   */
-  public boolean hasTask(UUID taskId) {
-    return scanResultCache.getIfPresent(taskId) != null;
-  }
-
-  /**
-   * Удаление задачи из кэша (например, при ручной отмене)
-   */
-  public void removeTask(UUID taskId) {
-    scanResultCache.invalidate(taskId);
-    log.debug("Scan result removed from cache: taskId={}", taskId);
-  }
-
-  // ==================== Statistics ====================
-
-  /**
-   * Получение статистики кеша штрих-кодов
-   */
-  public CacheStats getBarcodeCacheStats() {
-    var stats = barcodeCache.stats();
-    return new CacheStats(
-        stats.hitCount(),
-        stats.missCount(),
-        stats.hitRate(),
-        barcodeCache.estimatedSize(),
-        "barcode-cache"
-    );
-  }
-
-  /**
-   * Получение статистики кеша результатов сканирования
-   */
-  public CacheStats getScanResultCacheStats() {
-    var stats = scanResultCache.stats();
-    return new CacheStats(
-        stats.hitCount(),
-        stats.missCount(),
-        stats.hitRate(),
-        scanResultCache.estimatedSize(),
-        "scan-result-cache"
-    );
-  }
-
-  public record CacheStats(
-      long hitCount,
-      long missCount,
-      double hitRate,
-      long estimatedSize,
-      String cacheName
-  ) {
-
   }
 }

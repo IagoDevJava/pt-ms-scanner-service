@@ -2,9 +2,8 @@ package com.egorov.ms_scanner_service.controller;
 
 import com.egorov.ms_scanner_service.model.BarcodeScanRequest;
 import com.egorov.ms_scanner_service.model.BarcodeScanResponse;
-import com.egorov.ms_scanner_service.model.ScanRequest;
+import com.egorov.ms_scanner_service.model.ComplexScanRequest;
 import com.egorov.ms_scanner_service.model.ScanResult;
-import com.egorov.ms_scanner_service.service.CacheService;
 import com.egorov.ms_scanner_service.service.ScanServiceImpl;
 import jakarta.validation.Valid;
 import java.util.UUID;
@@ -41,7 +40,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class ScanController {
 
-  private final CacheService cacheService;
   private final ScanServiceImpl scanOrchestratorService;
 
   /**
@@ -83,7 +81,7 @@ public class ScanController {
    * {@code taskId}
    */
   @PostMapping("/complex")
-  public ResponseEntity<ScanResult> complexScan(@Valid @RequestBody ScanRequest request) {
+  public ResponseEntity<ScanResult> complexScan(@Valid @RequestBody ComplexScanRequest request) {
     return ResponseEntity.ok(scanOrchestratorService.complexScan(request));
   }
 
