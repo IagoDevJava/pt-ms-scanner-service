@@ -108,29 +108,21 @@ graph LR
 ## 🔧 Начало работы
 
 ### Предварительные требования
-
 - JDK 21+
-- Docker (для RabbitMQ)
+- Docker и Docker Compose
 - Maven 3.9+
+- Make (опционально, для удобства)
 
-### Локальный запуск
+### Быстрый старт (Make)
 
-1. **Клонируйте репозиторий**
-   ```bash
-   git clone https://github.com/your-org/ms-scanner-service.git
-   cd ms-scanner-service
-   ```
+```bash
+# Клонировать репозиторий
+git clone https://github.com/your-org/ms-scanner-service.git
+cd ms-scanner-service
+```
 
-2. **Запустите RabbitMQ**
-    ```bash
-    docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3.12-management
-    ```
-
-2. **Соберите и запустите сервис**
-    ```bash
-    mvn spring-boot:run -Dspring-boot.run.profiles=dev
-    ```
-   Сервис будет доступен на порту 8083.
+# Запустить всё одной командой
+make run
 
 ## 📚 API Документация
 
