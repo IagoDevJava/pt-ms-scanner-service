@@ -1,0 +1,85 @@
+{
+  "rabbit_version": "3.12",
+  "users": [
+    {
+      "name": "guest",
+      "password_hash": "guest",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": "administrator"
+    }
+  ],
+  "vhosts": [
+    {
+      "name": "/"
+    }
+  ],
+  "permissions": [
+    {
+      "user": "guest",
+      "vhost": "/",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "scan.exchange",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false
+    }
+  ],
+  "queues": [
+    {
+      "name": "scan.requests.queue",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "scan.results.queue",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-max-priority": 5
+      }
+    },
+    {
+      "name": "scan.notifications.queue",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 60000
+      }
+    }
+  ],
+  "bindings": [
+    {
+      "source": "scan.exchange",
+      "vhost": "/",
+      "destination": "scan.requests.queue",
+      "destination_type": "queue",
+      "routing_key": "scan.request"
+    },
+    {
+      "source": "scan.exchange",
+      "vhost": "/",
+      "destination": "scan.results.queue",
+      "destination_type": "queue",
+      "routing_key": "scan.result"
+    },
+    {
+      "source": "scan.exchange",
+      "vhost": "/",
+      "destination": "scan.notifications.queue",
+      "destination_type": "queue",
+      "routing_key": "scan.notification"
+    }
+  ]
+}
