@@ -126,15 +126,6 @@ graph LR
 git clone https://github.com/your-org/ms-scanner-service.git
 cd ms-scanner-service
 ```
-
-### Запустить всё одной командой
-```make run```
-
-Откроется:
-- Приложение: http://localhost:8083
-- RabbitMQ Management: http://localhost:15672 (guest/guest)
-- Health check: http://localhost:8083/actuator/health
-
 ### Быстрый старт (без Make)
 
 #### Запустить RabbitMQ
@@ -145,6 +136,12 @@ cd ms-scanner-service
 
 #### Запустить приложение
 ```mvn spring-boot:run -Dspring-boot.run.profiles=dev```
+
+Откроется:
+- Приложение: http://localhost:8083
+- RabbitMQ Management: http://localhost:15672 (guest/guest)
+- Health check: http://localhost:8083/actuator/health
+
 
 ### Ручной запуск (если RabbitMQ уже где-то запущен)
 С указанием хоста RabbitMQ
