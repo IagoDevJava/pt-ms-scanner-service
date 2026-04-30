@@ -2,7 +2,7 @@ package com.egorov.ms_scanner_service.controller;
 
 import com.egorov.ms_scanner_service.model.BarcodeScanRequest;
 import com.egorov.ms_scanner_service.model.BarcodeScanResponse;
-import com.egorov.ms_scanner_service.model.ComplexScanRequest;
+import com.egorov.ms_scanner_service.model.ExternalComplexScanRequest;
 import com.egorov.ms_scanner_service.model.ScanResult;
 import com.egorov.ms_scanner_service.service.ScanServiceImpl;
 import jakarta.validation.Valid;
@@ -59,7 +59,8 @@ public class ScanController {
    */
   @PostMapping("/barcode")
   public ResponseEntity<BarcodeScanResponse> scanBarcode(
-      @Valid @RequestBody BarcodeScanRequest request) {
+      @Valid @RequestBody BarcodeScanRequest request
+  ) {
     BarcodeScanResponse barcodeScanResponse = scanOrchestratorService.scanBarcode(request);
     if (barcodeScanResponse.found()) {
       return ResponseEntity.ok(barcodeScanResponse);
@@ -81,7 +82,9 @@ public class ScanController {
    * {@code taskId}
    */
   @PostMapping("/complex")
-  public ResponseEntity<ScanResult> complexScan(@Valid @RequestBody ComplexScanRequest request) {
+  public ResponseEntity<ScanResult> complexScan(
+      @Valid @RequestBody ExternalComplexScanRequest request
+  ) {
     return ResponseEntity.ok(scanOrchestratorService.complexScan(request));
   }
 

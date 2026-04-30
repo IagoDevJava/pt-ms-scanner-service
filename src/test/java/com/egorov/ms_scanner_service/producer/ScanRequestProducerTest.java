@@ -9,7 +9,9 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 
 import com.egorov.ms_scanner_service.exception.QueuePublishException;
-import com.egorov.ms_scanner_service.model.ComplexScanRequest;
+import com.egorov.ms_scanner_service.mapper.ComplexScanRequestMapper;
+import com.egorov.ms_scanner_service.model.ExternalComplexScanRequest;
+import com.egorov.ms_scanner_service.model.InternalComplexScanRequest;
 import com.egorov.ms_scanner_service.model.ScanType;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -32,32 +34,38 @@ class ScanRequestProducerTest {
   @Test
   void shouldSendRequestSuccessfully() {
     UUID taskId = UUID.randomUUID();
-    ComplexScanRequest request = new ComplexScanRequest(
+    String imageUrl = "http://minio/test.jpg";
+    ExternalComplexScanRequest externalRequest = new ExternalComplexScanRequest(
         taskId, 1L, "base64image", ScanType.AUTO, null
     );
+    InternalComplexScanRequest internalRequest = ComplexScanRequestMapper.toInternalRequest(
+        externalRequest, imageUrl);
 
-    scanRequestProducer.sendRequest(request);
+    scanRequestProducer.sendRequest(internalRequest);
 
     verify(rabbitTemplate).convertAndSend(
         eq(SCAN_EXCHANGE),
         eq(SCAN_REQUEST_RK),
-        eq(request)
+        eq(internalRequest)
     );
   }
 
   @Test
   void shouldSendRequestWithCorrectExchangeAndRoutingKey() {
     UUID taskId = UUID.randomUUID();
-    ComplexScanRequest request = new ComplexScanRequest(
+    String imageUrl = "http://minio/test.jpg";
+    ExternalComplexScanRequest externalRequest = new ExternalComplexScanRequest(
         taskId, 2L, "imageData", ScanType.ML, null
     );
+    InternalComplexScanRequest internalRequest = ComplexScanRequestMapper.toInternalRequest(
+        externalRequest, imageUrl);
 
-    scanRequestProducer.sendRequest(request);
+    scanRequestProducer.sendRequest(internalRequest);
 
     ArgumentCaptor<String> exchangeCaptor = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> routingKeyCaptor = ArgumentCaptor.forClass(String.class);
-    ArgumentCaptor<ComplexScanRequest> requestCaptor = ArgumentCaptor.forClass(
-        ComplexScanRequest.class);
+    ArgumentCaptor<InternalComplexScanRequest> requestCaptor = ArgumentCaptor.forClass(
+        InternalComplexScanRequest.class);
 
     verify(rabbitTemplate).convertAndSend(
         exchangeCaptor.capture(),
@@ -75,16 +83,19 @@ class ScanRequestProducerTest {
   @Test
   void shouldThrowQueuePublishExceptionWhenRabbitFails() {
     UUID taskId = UUID.randomUUID();
-    ComplexScanRequest request = new ComplexScanRequest(
+    String imageUrl = "http://minio/test.jpg";
+    ExternalComplexScanRequest externalRequest = new ExternalComplexScanRequest(
         taskId, 1L, "base64image", ScanType.AUTO, null
     );
+    InternalComplexScanRequest internalRequest = ComplexScanRequestMapper.toInternalRequest(
+        externalRequest, imageUrl);
 
     RuntimeException rabbitException = new RuntimeException("Connection refused");
     doThrow(rabbitException)
         .when(rabbitTemplate)
-        .convertAndSend(eq(SCAN_EXCHANGE), eq(SCAN_REQUEST_RK), eq(request));
+        .convertAndSend(SCAN_EXCHANGE, SCAN_REQUEST_RK, internalRequest);
 
-    assertThatThrownBy(() -> scanRequestProducer.sendRequest(request))
+    assertThatThrownBy(() -> scanRequestProducer.sendRequest(internalRequest))
         .isInstanceOf(QueuePublishException.class)
         .hasMessageContaining("Failed to send scan request to queue")
         .hasCause(rabbitException)
@@ -95,15 +106,18 @@ class ScanRequestProducerTest {
   @Test
   void shouldPropagateQueuePublishExceptionWithCorrectTaskId() {
     UUID taskId = UUID.fromString("123e4567-e89b-12d3-a456-426614174000");
-    ComplexScanRequest request = new ComplexScanRequest(
+    String imageUrl = "http://minio/test.jpg";
+    ExternalComplexScanRequest externalRequest = new ExternalComplexScanRequest(
         taskId, 99L, "test", ScanType.OCR, null
     );
+    InternalComplexScanRequest internalRequest = ComplexScanRequestMapper.toInternalRequest(
+        externalRequest, imageUrl);
 
     doThrow(new RuntimeException("Broken pipe"))
         .when(rabbitTemplate)
-        .convertAndSend(eq(SCAN_EXCHANGE), eq(SCAN_REQUEST_RK), eq(request));
+        .convertAndSend(SCAN_EXCHANGE, SCAN_REQUEST_RK, internalRequest);
 
-    assertThatThrownBy(() -> scanRequestProducer.sendRequest(request))
+    assertThatThrownBy(() -> scanRequestProducer.sendRequest(internalRequest))
         .isInstanceOf(QueuePublishException.class)
         .matches(ex -> ((QueuePublishException) ex).getTaskId().equals(taskId))
         .matches(ex -> ex.getMessage().contains("Failed to send scan request to queue"));

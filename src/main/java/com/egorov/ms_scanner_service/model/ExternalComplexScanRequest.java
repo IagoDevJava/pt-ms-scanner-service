@@ -5,16 +5,20 @@ import jakarta.validation.constraints.NotNull;
 import java.time.ZonedDateTime;
 import java.util.UUID;
 
-public record ComplexScanRequest(
-    @NotNull UUID taskId,
-    @NotNull Long userId,
-    @NotNull String imageBase64,
+public record ExternalComplexScanRequest(
+
+    @NotNull
+    UUID taskId,
+    @NotNull
+    Long userId,
+    @NotNull
+    String imageBase64,
     ScanType scanType,
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSSXXX")
     ZonedDateTime timestamp
 ) {
 
-  public ComplexScanRequest {
+  public ExternalComplexScanRequest {
     if (taskId == null) {
       taskId = UUID.randomUUID();
     }

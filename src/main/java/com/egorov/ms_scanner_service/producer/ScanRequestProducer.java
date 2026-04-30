@@ -4,7 +4,7 @@ import static com.egorov.ms_scanner_service.config.RabbitMQConfig.SCAN_EXCHANGE;
 import static com.egorov.ms_scanner_service.config.RabbitMQConfig.SCAN_REQUEST_RK;
 
 import com.egorov.ms_scanner_service.exception.QueuePublishException;
-import com.egorov.ms_scanner_service.model.ComplexScanRequest;
+import com.egorov.ms_scanner_service.model.InternalComplexScanRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -17,7 +17,7 @@ public class ScanRequestProducer {
 
   private final RabbitTemplate rabbitTemplate;
 
-  public void sendRequest(ComplexScanRequest request) {
+  public void sendRequest(InternalComplexScanRequest request) {
     log.info("Sending scan request: taskId={}, userId={}, type={}",
         request.taskId(), request.userId(), request.scanType());
 

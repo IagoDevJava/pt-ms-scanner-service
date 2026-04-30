@@ -70,6 +70,16 @@ server:
     include-exception: false
   shutdown: graceful
 
+# ========== MinIO Object Storage ==========
+minio:
+  url: ${MINIO_URL:http://localhost:9000}
+  access-key: ${MINIO_ACCESS_KEY:minioadmin}
+  secret-key: ${MINIO_SECRET_KEY:minioadmin}
+  bucket-name: ${MINIO_BUCKET_NAME:product-scans}
+  connect-timeout: ${MINIO_CONNECT_TIMEOUT:5s}
+  write-timeout: ${MINIO_WRITE_TIMEOUT:10s}
+  read-timeout: ${MINIO_READ_TIMEOUT:10s}
+
 # ========== Logging Configuration ==========
 logging:
   level:

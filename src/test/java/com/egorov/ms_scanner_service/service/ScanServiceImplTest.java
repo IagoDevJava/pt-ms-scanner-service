@@ -10,12 +10,14 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.egorov.ms_scanner_service.exception.FoodLibraryException;
+import com.egorov.ms_scanner_service.exception.MinIOUploadException;
 import com.egorov.ms_scanner_service.exception.QueuePublishException;
 import com.egorov.ms_scanner_service.feign.wrapper.FoodLibraryClientWrapper;
 import com.egorov.ms_scanner_service.model.BarcodeScanRequest;
 import com.egorov.ms_scanner_service.model.BarcodeScanResponse;
+import com.egorov.ms_scanner_service.model.ExternalComplexScanRequest;
+import com.egorov.ms_scanner_service.model.InternalComplexScanRequest;
 import com.egorov.ms_scanner_service.model.ProductInfo;
-import com.egorov.ms_scanner_service.model.ComplexScanRequest;
 import com.egorov.ms_scanner_service.model.ScanResult;
 import com.egorov.ms_scanner_service.model.ScanStatus;
 import com.egorov.ms_scanner_service.producer.ScanRequestProducer;
@@ -24,6 +26,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -42,6 +45,9 @@ class ScanServiceImplTest {
 
   @InjectMocks
   private ScanServiceImpl scanService;
+
+  @Mock
+  private MinIOService minioService;
 
   private final ProductInfo sampleProduct = new ProductInfo(
       1L, 2L, "Молоко", "Свежее молоко 3.2%", "4601234567890",
@@ -141,61 +147,97 @@ class ScanServiceImplTest {
   @Test
   void shouldSendComplexScanRequestAndStorePendingResult() {
     UUID taskId = UUID.randomUUID();
-    ComplexScanRequest complexScanRequest = new ComplexScanRequest(taskId, 1L, "base64", null, null);
+    String fakeUrl = "http://minio/product-scans-test/" + taskId + ".jpg";
+    ExternalComplexScanRequest externalRequest = new ExternalComplexScanRequest(
+        taskId, 1L, "base64", null, null);
 
-    ScanResult result = scanService.complexScan(complexScanRequest);
+    when(minioService.uploadImage(anyString(), any(UUID.class))).thenReturn(fakeUrl);
+
+    ScanResult result = scanService.complexScan(externalRequest);
 
     assertThat(result.status()).isEqualTo(ScanStatus.PENDING);
     assertThat(result.taskId()).isEqualTo(taskId);
-    verify(requestProducer).sendRequest(complexScanRequest);
+
+    // Проверяем, что в очередь отправился InternalComplexScanRequest с правильным URL
+    ArgumentCaptor<InternalComplexScanRequest> captor = ArgumentCaptor.forClass(
+        InternalComplexScanRequest.class);
+    verify(requestProducer).sendRequest(captor.capture());
+    InternalComplexScanRequest sent = captor.getValue();
+    assertThat(sent.imageUrl()).isEqualTo(fakeUrl);
+    assertThat(sent.taskId()).isEqualTo(taskId);
+    assertThat(sent.userId()).isEqualTo(1L);
+
     verify(cacheService).putScanResult(eq(taskId), any(ScanResult.class));
   }
 
   @Test
   void shouldReturnFailedWhenQueuePublishException() {
     UUID taskId = UUID.randomUUID();
-    ComplexScanRequest complexScanRequest = new ComplexScanRequest(taskId, 1L, "base64", null, null);
+    String fakeUrl = "http://minio/product-scans-test/" + taskId + ".jpg";
+    ExternalComplexScanRequest externalRequest = new ExternalComplexScanRequest(
+        taskId, 1L, "base64", null, null);
+
+    when(minioService.uploadImage(anyString(), any(UUID.class))).thenReturn(fakeUrl);
     doThrow(new QueuePublishException(taskId, "RabbitMQ unavailable"))
         .when(requestProducer).sendRequest(any());
 
-    ScanResult result = scanService.complexScan(complexScanRequest);
+    ScanResult result = scanService.complexScan(externalRequest);
 
     assertThat(result.status()).isEqualTo(ScanStatus.FAILED);
     assertThat(result.message()).contains("временно недоступен");
+    verify(cacheService, never()).putScanResult(any(), any());
   }
 
   @Test
   void shouldReturnFailedWhenUnexpectedException() {
     UUID taskId = UUID.randomUUID();
-    ComplexScanRequest complexScanRequest = new ComplexScanRequest(taskId, 1L, "base64", null, null);
+    String fakeUrl = "http://minio/product-scans-test/" + taskId + ".jpg";
+    ExternalComplexScanRequest externalRequest = new ExternalComplexScanRequest(
+        taskId, 1L, "base64", null, null);
+
+    when(minioService.uploadImage(anyString(), any(UUID.class))).thenReturn(fakeUrl);
     doThrow(new RuntimeException("Unexpected error"))
         .when(requestProducer).sendRequest(any());
 
-    ScanResult result = scanService.complexScan(complexScanRequest);
+    ScanResult result = scanService.complexScan(externalRequest);
 
     assertThat(result.status()).isEqualTo(ScanStatus.FAILED);
     assertThat(result.message()).contains("Непредвиденная ошибка");
+  }
+
+  @Test
+  void shouldReturnFailedWhenMinIoUploadFails() {
+    UUID taskId = UUID.randomUUID();
+    ExternalComplexScanRequest externalRequest = new ExternalComplexScanRequest(
+        taskId, 1L, "base64", null, null);
+
+    when(minioService.uploadImage(anyString(), any(UUID.class)))
+        .thenThrow(new MinIOUploadException("Upload failed"));
+
+    ScanResult result = scanService.complexScan(externalRequest);
+
+    assertThat(result.status()).isEqualTo(ScanStatus.FAILED);
+    assertThat(result.message()).contains("Не удалось загрузить изображение");
+    verify(requestProducer, never()).sendRequest(any());
+    verify(cacheService, never()).putScanResult(any(), any());
   }
 
   @Test
   void shouldReturnFailedWhenCacheFailsAfterSuccessfulSend() {
     UUID taskId = UUID.randomUUID();
-    ComplexScanRequest complexScanRequest = new ComplexScanRequest(taskId, 1L, "base64", null, null);
+    String fakeUrl = "http://minio/product-scans-test/" + taskId + ".jpg";
+    ExternalComplexScanRequest externalRequest = new ExternalComplexScanRequest(
+        taskId, 1L, "base64", null, null);
+
+    when(minioService.uploadImage(anyString(), any(UUID.class))).thenReturn(fakeUrl);
     doThrow(new RuntimeException("Cache write error"))
         .when(cacheService).putScanResult(eq(taskId), any());
 
-    ScanResult result = scanService.complexScan(complexScanRequest);
+    ScanResult result = scanService.complexScan(externalRequest);
 
     assertThat(result.status()).isEqualTo(ScanStatus.FAILED);
     assertThat(result.message()).contains("Непредвиденная ошибка");
-    verify(requestProducer).sendRequest(complexScanRequest);
-  }
-
-  @Test
-  void shouldNotCallProducerWhenRequestIsNull() {
-    // Этот тест проверяет, что метод не падает с NPE
-    // Но @NotNull на ScanRequest не даст передать null, поэтому тест опускаем
-    // Альтернативно: проверить через ReflectionTestUtils
+    verify(requestProducer).sendRequest(any()); // отправка всё равно произошла
   }
 
   // ==================== updateResult tests ====================
@@ -233,7 +275,6 @@ class ScanServiceImplTest {
     doThrow(new RuntimeException("Cache write error"))
         .when(cacheService).putScanResult(taskId, result);
 
-    // Не должно выбрасывать исключение
     scanService.updateResult(result);
 
     verify(cacheService).putScanResult(taskId, result);
@@ -285,6 +326,5 @@ class ScanServiceImplTest {
 
     assertThat(response.found()).isTrue();
     assertThat(response.product().name()).isEqualTo("Молоко");
-    // Продукт найден и возвращён, несмотря на ошибку кэширования
   }
 }

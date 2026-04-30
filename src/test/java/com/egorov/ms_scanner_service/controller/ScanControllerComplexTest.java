@@ -14,6 +14,7 @@ import com.egorov.ms_scanner_service.feign.FoodLibraryClient;
 import com.egorov.ms_scanner_service.model.ScanResult;
 import com.egorov.ms_scanner_service.model.ScanStatus;
 import com.egorov.ms_scanner_service.service.CacheService;
+import com.egorov.ms_scanner_service.service.MinIOService;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -43,23 +44,28 @@ class ScanControllerComplexTest {
   @MockitoBean
   private FoodLibraryClient foodLibraryClient;
 
+  @MockitoBean
+  private MinIOService minioService;
+
   @Test
   void shouldReturnPendingResultAndSendMessageToQueue() throws Exception {
     UUID taskId = UUID.randomUUID();
-    String requestJson = String.format("""
-        {
-            "taskId": "%s",
-            "userId": 1,
-            "imageBase64": "base64string"
-        }
-        """, taskId);
+    String requestJson = String.format(
+        """
+            {
+                "taskId": "%s",
+                "userId": 1,
+                "imageBase64": "base64string"
+            }
+            """, taskId
+    );
 
     mockMvc.perform(post("/api/v1/scan/complex")
-            .contentType(MediaType.APPLICATION_JSON)
-            .content(requestJson))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.status").value("PENDING"))
-        .andExpect(jsonPath("$.taskId").value(taskId.toString()));
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+           .andExpect(status().isOk())
+           .andExpect(jsonPath("$.status").value("PENDING"))
+           .andExpect(jsonPath("$.taskId").value(taskId.toString()));
 
     ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
     verify(rabbitTemplate).convertAndSend(eq(SCAN_EXCHANGE), eq(SCAN_REQUEST_RK), captor.capture());
@@ -76,14 +82,14 @@ class ScanControllerComplexTest {
     cacheService.putScanResult(taskId, result);
 
     mockMvc.perform(get("/api/v1/scan/status/" + taskId))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.status").value("PROCESSING"))
-        .andExpect(jsonPath("$.taskId").value(taskId.toString()));
+           .andExpect(status().isOk())
+           .andExpect(jsonPath("$.status").value("PROCESSING"))
+           .andExpect(jsonPath("$.taskId").value(taskId.toString()));
   }
 
   @Test
   void shouldReturn404WhenTaskNotFound() throws Exception {
     mockMvc.perform(get("/api/v1/scan/status/" + UUID.randomUUID()))
-        .andExpect(status().isNotFound());
+           .andExpect(status().isNotFound());
   }
 }
