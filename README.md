@@ -27,6 +27,9 @@
 продуктов и специализированным сервисом комплексного сканирования (`ms-complex-scan`) через
 RabbitMQ.
 
+**Миграция на MinIO**  
+Все изображения, полученные через API `/scan/complex`, временно сохраняются в объектном хранилище [MinIO](https://min.io/) (S3-совместимое). В очередь `scan.requests.queue` передаётся только URL изображения, а не base64, что позволяет избежать перегрузки RabbitMQ и гарантирует масштабируемость.
+
 ### Ключевые особенности:
 
 - ⚡ **Быстрый поиск по штрих-коду** с двухуровневым кэшированием (in-memory Caffeine + внешний
@@ -51,6 +54,7 @@ graph LR
     
     Scanner -->|Feign| Library[ms-food-library]
     Scanner -->|Кэш Caffeine| Cache[(In-Memory Cache)]
+    MinIO -->|imageUrl| Scanner
     
     Scanner -->|Публикация запроса| Exchange[scan.exchange]
     Exchange -->|routing: scan.request| QueueReq[scan.requests.queue]
@@ -87,6 +91,7 @@ graph LR
 - **POST /api/v1/scan/barcode** – поиск продукта по штрих-коду
 - **POST /api/v1/scan/complex** – запуск асинхронного распознавания по изображению
 - Автоматическое кэширование найденных продуктов (Caffeine)
+- Интеграция с MinIO для хранения исходных изображений
 - Публикация уведомлений о завершении сканирования
 - Health-чеки готовности (readiness, liveness) с проверкой RabbitMQ и Feign-клиента
 
@@ -98,6 +103,7 @@ graph LR
 | Фреймворк          | Spring Boot 4.0.6                    |
 | Коммуникация       | REST API (Spring Web), Feign Client  |
 | Брокер сообщений   | RabbitMQ (Spring AMQP)               |
+| Объектное хранилище| MinIO (S3 API)                       |
 | Отказоустойчивость | Resilience4j (CircuitBreaker)        |
 | Кэширование        | Caffeine (in‑memory)                 |
 | Мониторинг         | Actuator + Prometheus endpoint       |
